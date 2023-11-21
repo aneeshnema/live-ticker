@@ -51,7 +51,6 @@ impl Exchange<OkxData> for Okx {
                             tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
                             continue;
                         };
-                        // println!("Received: {}", text);
                         match serde_json::from_str::<OkxData>(&text) {
                             Err(err) => eprintln!("Subscription failure: {err}"),
                             Ok(OkxData::Response { event }) => {
@@ -68,7 +67,6 @@ impl Exchange<OkxData> for Okx {
                     let Ok(Message::Text(text)) = msg else {
                         continue;
                     };
-                    // println!("Received: {}", text);
                     match serde_json::from_str::<OkxData>(&text) {
                         Ok(value) => match Okx::get_orderbook(&value) {
                             Ok(Some(book)) => {
@@ -109,6 +107,79 @@ impl Exchange<OkxData> for Okx {
                 }));
             }
             _ => return Ok(None),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_response_json() {
+        let json = r#"{"event":"subscribe","arg":{"channel":"books5","instId":"ETH-BTC"},"connId":"b5ceefd8"}"#;
+
+        match serde_json::from_str::<OkxData>(json) {
+            Ok(OkxData::Response { event }) => assert_eq!(event, "subscribe"),
+            Ok(_) => panic!("data not parsed into Response"),
+            Err(err) => panic!("{err}"),
+        }
+    }
+
+    #[test]
+    fn parse_push_json() {
+        let json = r#"{
+            "arg":{"channel":"books5","instId":"ETH-BTC"},
+            "data":[
+                {
+                    "asks":[
+                        ["100.5","5.1","0","1"],
+                        ["101.23","13.33","0","2"]
+                    ],
+                    "bids":[
+                        ["100.0","10.0","0","9"],
+                        ["90.0","22.0","0","8"]
+                    ],
+                    "instId":"ETH-BTC",
+                    "ts":"1700582054108",
+                    "seqId":1062841525
+                }
+            ]
+        }"#;
+
+        match serde_json::from_str::<OkxData>(json) {
+            Ok(okx) => {
+                let Ok(Some(orderbook)) = Okx::get_orderbook(&okx) else {
+                    panic!();
+                };
+                assert_eq!(
+                    orderbook,
+                    Orderbook {
+                        exchange: "okx".into(),
+                        bids: Some(vec![
+                            Level {
+                                price: 100.0,
+                                quantity: 10.0
+                            },
+                            Level {
+                                price: 90.0,
+                                quantity: 22.0
+                            }
+                        ]),
+                        asks: Some(vec![
+                            Level {
+                                price: 100.5,
+                                quantity: 5.1
+                            },
+                            Level {
+                                price: 101.23,
+                                quantity: 13.33
+                            }
+                        ]),
+                    }
+                );
+            }
+            Err(err) => panic!("{err}"),
         }
     }
 }
