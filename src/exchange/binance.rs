@@ -1,11 +1,11 @@
-use anyhow::{Error, Result};
+use anyhow::{Context, Error, Result};
 use futures_util::StreamExt;
 use serde::Deserialize;
 use serde_json;
 use tokio::sync::mpsc::Sender;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 
-use crate::exchange::{Exchange, Level, Orderbook};
+use crate::{exchange::Exchange, live_ticker::Venue};
 
 #[derive(Deserialize, Debug, PartialEq)]
 pub struct Binance {
@@ -23,7 +23,7 @@ impl Binance {
 }
 
 impl Exchange<Binance> for Binance {
-    async fn start(&mut self, _token_pair: &str, sender: Sender<Orderbook>) {
+    async fn start(&mut self, _token_pair: &str, sender: Sender<Venue>) {
         let token_pair = "ethbtc";
         let url = format!("wss://stream.binance.com:9443/ws/{token_pair}@depth10@100ms");
 
@@ -43,7 +43,7 @@ impl Exchange<Binance> for Binance {
                         continue;
                     };
                     match serde_json::from_str::<Binance>(&text) {
-                        Ok(value) => match Binance::get_orderbook(&value) {
+                        Ok(value) => match Binance::get_l1_data(&value) {
                             Ok(Some(book)) => {
                                 let _ = sender.send(book).await;
                             }
@@ -57,30 +57,66 @@ impl Exchange<Binance> for Binance {
         });
     }
 
-    fn get_orderbook(exch: &Self) -> Result<Option<Orderbook>, Error> {
-        let bids = match &exch.bids {
+    fn get_l1_data(exch: &Self) -> Result<Option<Venue>, Error> {
+        let bid_data = match &exch.bids {
             Some(levels) => Some(
-                levels
+                levels[0]
                     .iter()
-                    .map(|level| Level::new(level))
-                    .collect::<Result<Vec<Level>, Error>>()?,
+                    .map(|value| {
+                        value
+                            .parse::<f64>()
+                            .context("failed to parse string into float")
+                    })
+                    .collect::<Result<Vec<f64>, Error>>()?,
+                // levels
+                //     .iter()
+                //     .map(|level| Level::new(level))
+                //     .collect::<Result<Vec<Level>, Error>>()?,
             ),
             None => None,
         };
-        let asks = match &exch.asks {
+        let ask_data = match &exch.asks {
             Some(levels) => Some(
-                levels
+                levels[0]
                     .iter()
-                    .map(|level| Level::new(level))
-                    .collect::<Result<Vec<Level>, Error>>()?,
+                    .map(|value| {
+                        value
+                            .parse::<f64>()
+                            .context("failed to parse string into float")
+                    })
+                    .collect::<Result<Vec<f64>, Error>>()?,
+                // levels
+                //     .iter()
+                //     .map(|level| Level::new(level))
+                //     .collect::<Result<Vec<Level>, Error>>()?,
             ),
             None => None,
         };
-        return Ok(Some(Orderbook {
-            exchange: "binance".into(),
-            bids,
-            asks,
-        }));
+
+        let mut venue = Venue {
+            name: String::from("binance"),
+            bid_price: 0.0,
+            bid_size: 0.0,
+            ask_price: 0.0,
+            ask_size: 0.0,
+        };
+
+        match bid_data {
+            Some(arr) => {
+                venue.bid_price = arr[0];
+                venue.bid_size = arr[1];
+            }
+            _ => (),
+        }
+
+        match ask_data {
+            Some(arr) => {
+                venue.ask_price = arr[0];
+                venue.ask_size = arr[1];
+            }
+            _ => (),
+        }
+        return Ok(Some(venue));
     }
 }
 
@@ -104,33 +140,17 @@ mod tests {
 
         match serde_json::from_str::<Binance>(json) {
             Ok(binance) => {
-                let Ok(Some(orderbook)) = Binance::get_orderbook(&binance) else {
+                let Ok(Some(venue)) = Binance::get_l1_data(&binance) else {
                     panic!();
                 };
                 assert_eq!(
-                    orderbook,
-                    Orderbook {
-                        exchange: "binance".into(),
-                        bids: Some(vec![
-                            Level {
-                                price: 100.0,
-                                quantity: 10.0
-                            },
-                            Level {
-                                price: 90.0,
-                                quantity: 22.0
-                            }
-                        ]),
-                        asks: Some(vec![
-                            Level {
-                                price: 100.5,
-                                quantity: 5.1
-                            },
-                            Level {
-                                price: 101.23,
-                                quantity: 13.33
-                            }
-                        ]),
+                    venue,
+                    Venue {
+                        name: String::from("binance"),
+                        bid_price: 100.0,
+                        bid_size: 10.0,
+                        ask_price: 100.5,
+                        ask_size: 5.1
                     }
                 );
             }

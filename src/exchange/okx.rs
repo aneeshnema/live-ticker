@@ -1,11 +1,11 @@
-use anyhow::{Error, Result};
+use anyhow::{Context, Error, Result};
 use futures_util::{SinkExt, StreamExt};
 use serde::Deserialize;
 use serde_json;
 use tokio::sync::mpsc::Sender;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 
-use crate::exchange::{Exchange, Level, Orderbook};
+use crate::{exchange::Exchange, live_ticker::Venue};
 
 #[derive(Deserialize, Debug)]
 pub struct AskBid {
@@ -23,7 +23,7 @@ pub enum OkxData {
 pub struct Okx {}
 
 impl Exchange<OkxData> for Okx {
-    async fn start(&mut self, _token_pair: &str, sender: Sender<Orderbook>) {
+    async fn start(&mut self, _token_pair: &str, sender: Sender<Venue>) {
         let url = "wss://ws.okx.com:8443/ws/v5/public";
         // let url = "wss://wspap.okx.com:8443/ws/v5/public?brokerId=9999";
         let token_pair = "ETH-BTC";
@@ -68,9 +68,9 @@ impl Exchange<OkxData> for Okx {
                         continue;
                     };
                     match serde_json::from_str::<OkxData>(&text) {
-                        Ok(value) => match Okx::get_orderbook(&value) {
-                            Ok(Some(book)) => {
-                                let _ = sender.send(book).await;
+                        Ok(value) => match Okx::get_l1_data(&value) {
+                            Ok(Some(venue)) => {
+                                let _ = sender.send(venue).await;
                             }
                             Ok(_) => (),
                             Err(err) => eprintln!("{err}"),
@@ -84,26 +84,38 @@ impl Exchange<OkxData> for Okx {
         });
     }
 
-    fn get_orderbook(data: &OkxData) -> Result<Option<Orderbook>, Error> {
+    fn get_l1_data(data: &OkxData) -> Result<Option<Venue>, Error> {
         match data {
             OkxData::Push { data } => {
                 let Some(ask_bid) = data.first() else {
                     return Ok(None);
                 };
-                let asks = ask_bid
-                    .asks
+                let ask_data = ask_bid.asks[0]
                     .iter()
-                    .map(|level| Level::new(level))
-                    .collect::<Result<Vec<Level>, Error>>()?;
-                let bids = ask_bid
-                    .bids
+                    .map(|value| {
+                        value
+                            .parse::<f64>()
+                            .context("failed to parse string into float")
+                    })
+                    .collect::<Result<Vec<f64>, Error>>()?;
+                // .map(|level| Level::new(level))
+                // .collect::<Result<Vec<Level>, Error>>()?;
+                let bid_data = ask_bid.bids[0]
                     .iter()
-                    .map(|level| Level::new(level))
-                    .collect::<Result<Vec<Level>, Error>>()?;
-                return Ok(Some(Orderbook {
-                    exchange: "okx".into(),
-                    bids: Some(bids),
-                    asks: Some(asks),
+                    .map(|value| {
+                        value
+                            .parse::<f64>()
+                            .context("failed to parse string into float")
+                    })
+                    .collect::<Result<Vec<f64>, Error>>()?;
+                // .map(|level| Level::new(level))
+                // .collect::<Result<Vec<Level>, Error>>()?;
+                return Ok(Some(Venue {
+                    name: String::from("okx"),
+                    bid_price: bid_data[0],
+                    bid_size: bid_data[1],
+                    ask_price: ask_data[0],
+                    ask_size: ask_data[1],
                 }));
             }
             _ => return Ok(None),
@@ -149,33 +161,17 @@ mod tests {
 
         match serde_json::from_str::<OkxData>(json) {
             Ok(okx) => {
-                let Ok(Some(orderbook)) = Okx::get_orderbook(&okx) else {
+                let Ok(Some(venue)) = Okx::get_l1_data(&okx) else {
                     panic!();
                 };
                 assert_eq!(
-                    orderbook,
-                    Orderbook {
-                        exchange: "okx".into(),
-                        bids: Some(vec![
-                            Level {
-                                price: 100.0,
-                                quantity: 10.0
-                            },
-                            Level {
-                                price: 90.0,
-                                quantity: 22.0
-                            }
-                        ]),
-                        asks: Some(vec![
-                            Level {
-                                price: 100.5,
-                                quantity: 5.1
-                            },
-                            Level {
-                                price: 101.23,
-                                quantity: 13.33
-                            }
-                        ]),
+                    venue,
+                    Venue {
+                        name: String::from("okx"),
+                        bid_price: 100.0,
+                        bid_size: 10.0,
+                        ask_price: 100.5,
+                        ask_size: 5.1
                     }
                 );
             }

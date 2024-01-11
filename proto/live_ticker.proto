@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package live_ticker;
+
+message Empty {}
+
+message Venue {
+    string name = 1;
+    double bid_price = 2;
+    double bid_size = 3;
+    double ask_price = 4;
+    double ask_size = 5;
+}
+
+message L1Summary {
+    repeated Venue venues = 1;
+}
+
+service L1Ticker {
+    rpc GetL1Summary(Empty) returns (stream L1Summary);
+}
