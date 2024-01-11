@@ -23,10 +23,10 @@ pub enum OkxData {
 pub struct Okx {}
 
 impl Exchange<OkxData> for Okx {
-    async fn start(&mut self, _token_pair: &str, sender: Sender<Venue>) {
+    async fn start(&mut self, token_pair: &str, sender: Sender<Venue>) {
         let url = "wss://ws.okx.com:8443/ws/v5/public";
         // let url = "wss://wspap.okx.com:8443/ws/v5/public?brokerId=9999";
-        let token_pair = "ETH-BTC";
+        let token_pair = token_pair.to_owned();
 
         tokio::spawn(async move {
             loop {

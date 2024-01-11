@@ -24,8 +24,8 @@ use venue_aggregator::VenueAggregator;
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
-    /// Token pair to fetch MD of, eg, eth-usd
-    #[arg(short, long, default_value = "eth-usd")]
+    /// Token pair to fetch MD of, eg, ETH-USD
+    #[arg(short, long, default_value = "ETH-USDT")]
     token_pair: String,
 
     /// Port to start the server on

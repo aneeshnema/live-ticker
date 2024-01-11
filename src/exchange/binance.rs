@@ -23,8 +23,7 @@ impl Binance {
 }
 
 impl Exchange<Binance> for Binance {
-    async fn start(&mut self, _token_pair: &str, sender: Sender<Venue>) {
-        let token_pair = "ethbtc";
+    async fn start(&mut self, token_pair: &str, sender: Sender<Venue>) {
         let url = format!("wss://stream.binance.com:9443/ws/{token_pair}@depth10@100ms");
 
         tokio::spawn(async move {
