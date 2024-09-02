@@ -21,13 +21,13 @@ cargo run --release --bin server -- -p 7777 -t ETH-USDT
 The data from the server can be seen through the sample client provided in this repo.
 ### Usage
 ```
-cargo run --release --bin client -p PORT
+cargo run --release --bin client -- -p PORT
 ```
 #### Arguments
 - `-p` the port to connect to. default: 7777
 #### Example
 ```
-cargo run --release --bin client -p 7777
+cargo run --release --bin client -- -p 7777
 ```
 ![image](https://github.com/aneeshnema/live-ticker/assets/31976598/40f4c65b-bd96-4519-a119-b18dc4a447bd)
 
